@@ -17,11 +17,11 @@ export function validateNote(raw: string): NoteValidation {
     return { ok: true, value: null, message: null };
   }
   if (value.includes("\n") || value.includes("\r")) {
-    return { ok: false, value: null, message: "备注必须是单行文本" };
+    return { ok: false, value: null, message: "备注不能换行" };
   }
   // 按 Unicode 标量计长度（与后端一致）
   if (Array.from(value).length > NOTE_MAX_LENGTH) {
-    return { ok: false, value: null, message: `备注不能超过 ${NOTE_MAX_LENGTH} 个字符` };
+    return { ok: false, value: null, message: `备注不能超过 ${NOTE_MAX_LENGTH} 字符` };
   }
   return { ok: true, value, message: null };
 }

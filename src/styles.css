@@ -399,18 +399,22 @@ table.project-table { border-collapse: collapse; width: 100%; }
 
 /* ---------- 备注气泡 ---------- */
 
+.note-mark { color: var(--muted); cursor: default; padding: 0 2px; border-radius: 4px; }
+.note-mark:focus-visible { outline: 2px solid rgba(43, 108, 176, .42); outline-offset: 1px; }
+
 .note-tooltip {
   position: fixed;
-  z-index: 100;
+  z-index: 1000;
   max-width: 320px;
-  background: #1f2328;
-  color: #fff;
+  background: var(--surface);
+  color: #1f2328;
+  border: 1px solid var(--border);
   border-radius: 6px;
   padding: 8px 10px;
   font-size: 12.5px;
   white-space: pre-wrap;
   word-break: break-all;
-  box-shadow: 0 8px 24px rgba(22, 27, 32, .3);
+  box-shadow: 0 4px 12px rgba(22, 27, 32, .12);
 }
 
 /* ---------- 设置页 ---------- */
@@ -459,3 +463,11 @@ table.project-table { border-collapse: collapse; width: 100%; }
 .progress-row .pid { font-weight: 600; min-width: 120px; }
 .progress-row .msg { color: var(--secondary); font-family: var(--mono); font-size: 12.5px; flex: 1; word-break: break-all; }
 
+
+/* 备注气泡与进度行（002 / 003） */
+.progress-line { padding: 6px 12px; color: var(--muted); font-size: 12px; border-bottom: 1px solid var(--divider); font-family: var(--mono); }
+.copyable { cursor: copy; }
+.copyable:hover { background: var(--primary-tint); }
+
+/* 拖拽（014）：拖动中的行与落点指示 */
+.row-dragging td { opacity: .5; }

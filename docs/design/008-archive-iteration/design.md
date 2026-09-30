@@ -219,9 +219,8 @@ pub fn archive(
 
 ## 7. 实现记录
 
-实现方填写：
-
-- 完成日期：
-- 偏离项：
-- 原因：
-- 涉及文件：
+- 完成日期：2026-09-30（S6）
+- 偏离项：两点。① 「不干净且未强制」的错误码按 `workflows.md §8` 用 `conflict`（设计正文 §4 表写的是 `validation`，两者不一致，取当前态文档）；
+  ② 归档执行阶段的逐条进度事件由 `lib.rs` 统一发到 `archive-progress`（`message` 为实际 `git worktree remove …` 命令），事件订阅在 `App.vue` 一处完成并透传给对话框，效果与设计「对话框单独订阅」一致。
+- 原因：current-state 文档（workflows/architecture）优先；事件集中在 App 避免多处订阅泄漏。
+- 涉及文件：`src-tauri/src/archive.rs`、`src-tauri/src/lib.rs`、`src/components/ArchiveDialog.vue`、`src/utils/archive.ts`、`src/App.vue`、`src-tauri/tests/mvp_flow.rs`

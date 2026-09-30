@@ -442,3 +442,87 @@ mod tests {
         assert!(resolution.vendor_available);
     }
 }
+
+#[cfg(test)]
+mod s4_tests {
+    use super::*;
+    use crate::models::SCHEMA_VERSION;
+
+    #[test]
+    fn detect_project_type_covers_php_go_other_unknown() {
+        let temp = tempfile::tempdir().unwrap();
+        let php = temp.path().join("php");
+        std::fs::create_dir_all(&php).unwrap();
+        std::fs::write(php.join("composer.json"), "{}").unwrap();
+        assert_eq!(detect_project_type(&php), ProjectType::Php);
+        assert!(!vendor_available(&php));
+        std::fs::create_dir_all(php.join("vendor")).unwrap();
+        assert!(vendor_available(&php));
+
+        let go = temp.path().join("go");
+        std::fs::create_dir_all(&go).unwrap();
+        std::fs::write(go.join("go.mod"), "module x").unwrap();
+        assert_eq!(detect_project_type(&go), ProjectType::Go);
+
+        let other = temp.path().join("other");
+        std::fs::create_dir_all(&other).unwrap();
+        assert_eq!(detect_project_type(&other), ProjectType::Other);
+
+        assert_eq!(
+            detect_project_type(&temp.path().join("missing")),
+            ProjectType::Unknown
+        );
+    }
+
+    /// 验收 §1：配置文件不存在时不创建；保存后是有效 camelCase JSON 且不含凭证
+    #[test]
+    fn load_does_not_create_file_and_save_writes_valid_json() {
+        let temp = tempfile::tempdir().unwrap();
+        let previous_home = std::env::var_os("HOME");
+        std::env::set_var("HOME", temp.path());
+
+        let result = std::panic::catch_unwind(|| {
+            // 1) 不存在 → 默认值且不创建文件
+            let loaded = load().expect("缺省配置应可加载");
+            assert_eq!(loaded.workspace_root, None);
+            assert!(loaded.shared_directories.is_empty());
+            assert_eq!(loaded.schema_version, SCHEMA_VERSION);
+            assert!(
+                !config_path().exists(),
+                "load 不应创建配置文件：{}",
+                config_path().display()
+            );
+
+            // 2) 保存 → 写盘
+            let workspace = temp.path().join("ws");
+            let saved = save(AppConfig {
+                workspace_root: Some(workspace.to_string_lossy().to_string()),
+                ..Default::default()
+            })
+            .expect("保存应成功");
+            assert!(config_path().is_file());
+
+            let text = std::fs::read_to_string(config_path()).unwrap();
+            let value: serde_json::Value = serde_json::from_str(&text).unwrap();
+            assert_eq!(value["schemaVersion"], 1);
+            assert_eq!(value["workspaceRoot"], saved.workspace_root.clone().unwrap());
+            assert!(value["sharedDirectories"].is_array());
+            assert!(value["projects"].is_array());
+            let lower = text.to_lowercase();
+            for needle in ["token", "password", "http://", "https://", "ssh-rsa"] {
+                assert!(!lower.contains(needle), "配置不应包含 {needle}");
+            }
+            // 3) 能再次读回
+            let reloaded = load().unwrap();
+            assert_eq!(reloaded.workspace_root, saved.workspace_root);
+        });
+
+        match previous_home {
+            Some(home) => std::env::set_var("HOME", home),
+            None => std::env::remove_var("HOME"),
+        }
+        if let Err(payload) = result {
+            std::panic::resume_unwind(payload);
+        }
+    }
+}

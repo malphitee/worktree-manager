@@ -124,9 +124,7 @@ SSR 测试（`scripts/test-frontend.mjs`）：`copyText` 在无 `navigator` 环�
 
 ## 7. 实现记录
 
-实现方填写：
-
-- 完成日期：
-- 偏离项：
-- 原因：
-- 涉及文件：
+- 完成日期：2026-09-30（S5）
+- 偏离项：无。`copyText` 按设计返回 `Promise<void>`（两种方式都失败时 reject）；detached 行复制 `detached @ <短hash>` 原文，与所见一致。
+- 原因：—
+- 涉及文件：`src/utils/clipboard.ts`、`src/components/IterationCard.vue`、`src/styles.css`、`scripts/test-frontend.mjs`

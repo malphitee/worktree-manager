@@ -177,9 +177,8 @@ async fn list_workspaces(state: State<'_, OperationState>, reconcile: bool)
 
 ## 7. 实现记录
 
-实现方填写：
-
-- 完成日期：
-- 偏离项：
-- 原因：
-- 涉及文件：
+- 完成日期：2026-09-30（S3 落地，S5 补 hasChanges）
+- 偏离项：无。复核持锁「复核状态」、快扫不持锁、按钮 loading + 旧列表保留、无刷新按钮与轮询（`grep setInterval` 无命中）。
+  实现说明：复核的 discovered 扫描优先按已配置仓库的 `worktree list` 条目匹配，迭代目录下含 `.git` 但未匹配到仓库的子目录再补一条 `sourceRepository` 为空的行。
+- 原因：保证「未托管但有来源」的行可移除，「来源未知」的行不可移除。
+- 涉及文件：`src-tauri/src/manifest.rs`、`src-tauri/src/lib.rs`、`src/components/WorkspaceList.vue`

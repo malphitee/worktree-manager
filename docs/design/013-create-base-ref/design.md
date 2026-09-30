@@ -218,9 +218,9 @@ Rust 集成测试（`tempfile` + 裸仓库；无 git 则打印原因并 return�
 
 ## 7. 实现记录
 
-实现方填写：
-
-- 完成日期：
-- 偏离项：
-- 原因：
-- 涉及文件：
+- 完成日期：2026-09-30（`normalize` 于 S3 落地，候选列举 / 前端在 S8）
+- 偏离项：两点。① `normalize` 在 S3 就需要（创建流程要写归一化 `baseRef`），因此早于 S8 落地；
+  ② 归一化后额外对 `branch` 段执行 `validation::validate_branch_name`（设计 §3.2 第 4 步的 `validate_branch_shape`）。
+- 原因：S3 创建流程依赖归一化结果；分支形状校验复用既有跨平台规则，避免两份实现。
+- 涉及文件：`src-tauri/src/base_ref.rs`、`src-tauri/src/workspace.rs`、`src-tauri/src/lib.rs`、
+  `src/utils/base-ref.ts`（`previewNormalized`）、`src/components/CreateWorkspace.vue`、`src-tauri/tests/mvp_flow.rs`、`scripts/test-frontend.mjs`

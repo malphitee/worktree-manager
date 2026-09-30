@@ -225,9 +225,8 @@ fixture 用 `tempfile` + 本地裸仓库作 `origin`，本机无 `git` 时打印
 
 ## 7. 实现记录
 
-实现方填写：
-
-- 完成日期：
-- 偏离项：
-- 原因：
-- 涉及文件：
+- 完成日期：2026-09-30（S5）
+- 偏离项：无功能偏离。两点实现说明：① `merge_check.rs` 另外导出 `has_changes`，供复核档（004/005）复用同一解析链；
+  ② 顺带发现「单提交 squash」的 patch-id 与原始提交相同，会被层 2 判为 `merged`（语义正确），因此层 3 `contained` 的测试 fixture 改为两个提交被压成一个。
+- 原因：层 3 只在「多个提交被压成一个」或「patch-id 不等」时才可能命中；单提交 squash 由层 2 正确识别。
+- 涉及文件：`src-tauri/src/merge_check.rs`、`src-tauri/src/git.rs`（新增 `run_exit` 按退出码判定）、`src-tauri/src/manifest.rs`、`src-tauri/src/lib.rs`、`src-tauri/tests/mvp_flow.rs`、`src/components/IterationCard.vue`、`src/components/WorkspaceList.vue`、`src/utils/merge.ts`

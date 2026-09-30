@@ -163,9 +163,7 @@ Rust（`validation.rs` / `manifest.rs` 单测，S6）：
 
 ## 7. 实现记录
 
-实现方填写：
-
-- 完成日期：
-- 偏离项：
-- 原因：
-- 涉及文件：
+- 完成日期：2026-09-30（S6）
+- 偏离项：`normalize_note` 实现在 `workspace.rs`（与创建流程共用），并按 `workflows.md §10` 使用文案「备注不能换行」「备注不能超过 50 字符」；前端 `utils/note.ts` 文案与后端一致。
+- 原因：创建流程（workspace.rs）已经需要同一条校验，放在同一模块避免两份实现；文案取当前态文档。
+- 涉及文件：`src-tauri/src/workspace.rs`、`src-tauri/src/manifest.rs`、`src-tauri/src/lib.rs`、`src/utils/note.ts`、`src/App.vue`、`src/components/IterationCard.vue`

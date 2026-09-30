@@ -111,6 +111,45 @@ cp src-tauri/target/release/worktree-manager "$dst/"
 
 ## 实现状态
 
-> 实现方在 S4（MVP 验收）与 S9（全量验收）更新本节：已完成步骤、产物路径与体积、构建时间、各项自检命令结果摘要、未验证项。
+> 最后更新：S4（MVP 验收与便携构建）。S5–S9 完成后在本节继续追加。
 
-尚未开始实现。当前仓库只包含设计文档。
+**已完成步骤**
+
+| 步骤 | 内容 | 状态 |
+| --- | --- | --- |
+| S1 | 工程骨架 + 视觉静态还原（13 个组件、19 个命令封装、SSR 测试） | 完成 |
+| S2 | Rust 领域层：`error` / `models` / `platform` / `validation` / `path_utils` / `atomic_json` / `config` / `git` / `copy` / `vendor` / `manifest`（纯部分） | 完成 |
+| S3 | 创建与移除闭环：`workspace.rs` 串行编排、`removal.rs` 风险评估、完整复核 + discovered 扫描、11 个 MVP 命令、前端接通 | 完成（真实窗口手工验证需人工执行） |
+| S4 | MVP 验收（`docs/acceptance.md` §1–§5）+ 便携构建 + README 实测更新 | 完成 |
+| S5 | 001–007：`merge_check.rs` 三层判定 + `merge-check-progress` 事件流；002 剪贴板复制；004 手动复核分档；005/006/007 判定与列表合并 | 完成 |
+| S6 | 008–010：`archive.rs` 归档评估与批量移除；`set_iteration_note` / `set_iteration_hidden`；前端归档对话框、备注内联编辑、隐藏收纳区 | 完成 |
+| S7 | 011–012：复核识别本地改名并原子回写清单；`NoteTooltip`（标记 + Teleport 气泡、hover/focus、capture 监听收起） | 完成 |
+| S8 | 013–014：`base_ref::list_remote_branches` 与创建页候选 datalist / `⟳`；`relocate.rs` 排序与跨迭代移动 + 前端拖拽 | 完成（真实窗口拖拽验证需人工执行） |
+| S9 | 全量验收（`acceptance.md` §6–§11 标注）+ 文档一致性审计 + 交付物清单 | 完成 |
+
+**产物**
+
+| 项 | 值 |
+| --- | --- |
+| 路径 | `src-tauri/target/release/worktree-manager` |
+| 类型 / 体积 | `Mach-O 64-bit executable arm64` / 约 3.6 MB |
+| 构建 | `npm run tauri build -- --no-bundle`，release（`lto` + `opt-level=s` + `strip` + `panic=abort`），增量约 40 s |
+
+**自检结果（最近一次真实执行）**
+
+| 命令 | 结果 |
+| --- | --- |
+| `npm run typecheck` | 通过 |
+| `npm run test:frontend` | 通过（30 项断言） |
+| `npm run build` | 通过（JS ≈ 130 kB / CSS ≈ 12 kB） |
+| `(cd src-tauri && cargo test)` | 通过（97 单测 + 50 集成测试） |
+| `(cd src-tauri && cargo clippy --all-targets)` | 0 warning / 0 error |
+| `npm run tauri build -- --no-bundle` | 通过 |
+| 便携验证 | 可执行文件复制到空临时目录后启动，进程持续运行、无标准错误输出 |
+
+**未验证项**
+
+- 真实 Tauri 窗口的人工交互：窗口标题 / 尺寸 / 居中、目录选择对话框、系统文件管理器打开、剪贴板、**拖拽（含拖影与落点）**、备注气泡的滚动收起与翻转、内联编辑键盘操作、复核期间列表不闪空。相关验收条目已在 `docs/acceptance.md` 中标注原因（均需人工在窗口内执行）。
+- Windows / Linux 平台行为：本轮验收平台为 macOS；相关分支代码保留但未编译验证（`cargo check --target x86_64-pc-windows-msvc` 因本机未安装该 target 未执行）。
+- `relocate`「第二次清单写入失败」的恢复指引文案：需要构造「目标可写、源不可写」的只读状态，本机以普通用户难以稳定复现，属代码审查结论。
+

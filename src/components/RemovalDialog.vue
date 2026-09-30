@@ -12,7 +12,7 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  confirm: [payload: { removeCopiedVendor: boolean }];
+  confirm: [payload: { removeCopiedVendor: boolean; confirmation: string }];
   cancel: [];
 }>();
 
@@ -75,7 +75,7 @@ onMounted(() => {
             type="button"
             class="btn danger"
             :disabled="!canConfirm"
-            @click="emit('confirm', { removeCopiedVendor })"
+            @click="emit('confirm', { removeCopiedVendor, confirmation })"
           >移除</button>
         </div>
       </div>

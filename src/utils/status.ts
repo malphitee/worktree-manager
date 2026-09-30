@@ -114,6 +114,14 @@ export function sharedDirTone(s: SharedDirStatus): Tone {
   }
 }
 
+/** 复核结果中 `renamedFrom` 非空的行数（用于「已同步 N 个分支重命名」toast，设计 011 §3.3） */
+export function countRenamed(groups: { projects: { renamedFrom: string | null }[] }[]): number {
+  return groups.reduce(
+    (total, group) => total + group.projects.filter((project) => project.renamedFrom !== null).length,
+    0,
+  );
+}
+
 export function createPhaseLabel(p: CreatePhase): string {
   switch (p) {
     case "queued":

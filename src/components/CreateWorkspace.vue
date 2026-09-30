@@ -1,49 +1,56 @@
 <script setup lang="ts">
-// 创建页（ui-spec.md §7.2）：迭代号、最近迭代胶囊、备注、统一分支名/基分支、项目勾选表、底部固定操作条。
-// 纯前端状态联动：统一值覆盖已勾选行；新勾选行继承当前统一值；单行修改不反向影响统一值。
-import { computed, ref } from "vue";
-import type { AppConfig, CreateProjectRequest, CreateRequest } from "../types";
+// 创建页（ui-spec.md §7.2 / 设计 013）：迭代号、最近迭代胶囊、备注、统一分支名/基分支（含候选 datalist）、
+// 项目勾选表（逐项目基分支 + ⟳ 刷新）、底部固定操作条。
+// 联动规则（统一值覆盖已勾选行、新勾选行继承统一值、单行修改不反向影响）在 utils/create-form.ts 中实现并有单测。
+import { computed, inject, onMounted, ref, watch } from "vue";
+import * as api from "../api/tauri";
+import type { AppConfig, CreateRequest, RemoteBranches } from "../types";
+import { previewNormalized } from "../utils/base-ref";
 import { precheckIteration, precheckWorkspaceRoot } from "../utils/config";
+import { UI_CONTEXT_KEY } from "../utils/context";
+import type { CreateProjectRow } from "../utils/create-form";
+import {
+  applyUnifiedBaseRef,
+  applyUnifiedBranch,
+  buildRows,
+  toProjectRequests,
+  toggleRowSelection,
+} from "../utils/create-form";
 import { validateNote } from "../utils/note";
-
-interface ProjectRow {
-  projectId: string;
-  projectType: string;
-  vendorAvailable: boolean;
-  selected: boolean;
-  branch: string;
-  baseRef: string;
-}
 
 const props = defineProps<{ config: AppConfig }>();
 
 const emit = defineEmits<{
   start: [request: CreateRequest];
   back: [];
-  /** 013：按项目拉取基分支候选（S8 接线） */
-  refreshBranches: [projectId: string];
-  refreshAllBranches: [];
 }>();
+
+const ui = inject(UI_CONTEXT_KEY, null);
 
 const iteration = ref("");
 const note = ref("");
 const unifiedBranch = ref("");
 const unifiedBaseRef = ref("");
+const rows = ref<CreateProjectRow[]>(buildRows(props.config.projects));
+/** projectId → 基分支候选（本地 / 远端），离开创建页即丢弃（设计 013） */
+const candidates = ref<Map<string, RemoteBranches>>(new Map());
+const refreshing = ref<string[]>([]);
 
-const rows = ref<ProjectRow[]>(
-  props.config.projects.map((project) => ({
-    projectId: project.id,
-    projectType: project.projectType,
-    vendorAvailable: project.vendorAvailable,
-    selected: false,
-    branch: "",
-    baseRef: "",
-  })),
+watch(
+  () => props.config.projects,
+  (projects) => {
+    rows.value = buildRows(projects);
+  },
 );
+
+onMounted(async () => {
+  // 进入页面：对所有已配置项目加载本地候选（只读 refs/remotes，不联网）
+  await Promise.all(props.config.projects.map((project) => loadCandidates(project.id, false)));
+});
 
 const selectedRows = computed(() => rows.value.filter((row) => row.selected));
 
-const iterationError = computed(() => (iteration.value.length === 0 ? "请填写迭代号" : precheckIteration(iteration.value)));
+const iterationError = computed(() => precheckIteration(iteration.value));
 const rootError = computed(() => precheckWorkspaceRoot(props.config.workspaceRoot ?? ""));
 const noteError = computed(() => {
   if (note.value.trim().length === 0) {
@@ -69,32 +76,74 @@ const disabledReason = computed<string | null>(() => {
   return null;
 });
 
-function applyUnifiedBranch(): void {
+/** 统一基分支候选：所有已勾选项目候选的并集 */
+const unifiedCandidates = computed<string[]>(() => {
+  const set = new Set<string>();
   for (const row of rows.value) {
-    if (row.selected) {
-      row.branch = unifiedBranch.value;
+    if (!row.selected) {
+      continue;
     }
+    const candidate = candidates.value.get(row.projectId);
+    candidate?.branches.forEach((branch) => set.add(branch));
   }
+  return [...set].sort();
+});
+
+function remotesOf(projectId: string): string[] {
+  return candidates.value.get(projectId)?.remotes ?? [];
 }
 
-function applyUnifiedBaseRef(): void {
-  for (const row of rows.value) {
-    if (row.selected) {
-      row.baseRef = unifiedBaseRef.value;
-    }
-  }
+function warningOf(projectId: string): string | null {
+  return candidates.value.get(projectId)?.warning ?? null;
 }
 
-function toggleRow(row: ProjectRow): void {
-  row.selected = !row.selected;
-  if (row.selected) {
-    row.branch = unifiedBranch.value;
-    row.baseRef = unifiedBaseRef.value;
-  }
+function previewOf(input: string): string {
+  const remotes = [...new Set(selectedRows.value.flatMap((row) => remotesOf(row.projectId)))];
+  const preview = previewNormalized(input, remotes);
+  return preview.error === null ? `将解析为：${preview.value}` : preview.error;
+}
+
+function onUnifiedBranchInput(): void {
+  applyUnifiedBranch(rows.value, unifiedBranch.value);
+}
+
+function onUnifiedBaseRefInput(): void {
+  applyUnifiedBaseRef(rows.value, unifiedBaseRef.value);
+}
+
+function onToggleRow(row: CreateProjectRow): void {
+  toggleRowSelection(row, unifiedBranch.value, unifiedBaseRef.value);
 }
 
 function applyRecent(value: string): void {
   iteration.value = value;
+}
+
+/** 单项目刷新：`ls-remote --heads`（15 秒超时；失败降级为本地候选并显示 warning） */
+async function loadCandidates(projectId: string, includeRemote: boolean): Promise<void> {
+  if (refreshing.value.includes(projectId)) {
+    return;
+  }
+  refreshing.value = [...refreshing.value, projectId];
+  try {
+    const result = await api.listRemoteBranches(projectId, includeRemote);
+    const next = new Map(candidates.value);
+    next.set(projectId, result);
+    candidates.value = next;
+  } catch (err) {
+    ui?.toast(api.toAppError(err).message, "danger");
+  } finally {
+    refreshing.value = refreshing.value.filter((item) => item !== projectId);
+  }
+}
+
+/** 整页「⟳ 全部」：串行刷新已勾选项目 */
+async function refreshAll(): Promise<void> {
+  for (const row of rows.value) {
+    if (row.selected) {
+      await loadCandidates(row.projectId, true);
+    }
+  }
 }
 
 function start(): void {
@@ -106,11 +155,7 @@ function start(): void {
     iteration: iteration.value,
     unifiedBranch: unifiedBranch.value.trim().length > 0 ? unifiedBranch.value.trim() : null,
     unifiedBaseRef: unifiedBaseRef.value,
-    projects: selectedRows.value.map<CreateProjectRequest>((row) => ({
-      projectId: row.projectId,
-      branch: row.branch.trim().length > 0 ? row.branch.trim() : null,
-      baseRef: row.baseRef,
-    })),
+    projects: toProjectRequests(rows.value),
   };
   // 备注三态：空输入＝缺省（不改动）；有值＝设置（后端会再次校验）
   if (noteResult.value !== null) {
@@ -153,13 +198,31 @@ function start(): void {
         <h2>统一分支 / 基分支</h2>
         <label class="field">
           统一分支名（留空 ＝ Detached HEAD）
-          <input v-model="unifiedBranch" type="text" placeholder="如 feature/7.3.0" @input="applyUnifiedBranch" />
+          <input v-model="unifiedBranch" type="text" placeholder="如 feature/7.3.0" @input="onUnifiedBranchInput" />
         </label>
         <label class="field" style="margin-top: 12px">
           统一基分支（留空 ＝ origin/master）
-          <input v-model="unifiedBaseRef" type="text" placeholder="origin/master" @input="applyUnifiedBaseRef" />
+          <span class="field-row">
+            <input
+              v-model="unifiedBaseRef"
+              type="text"
+              list="unified-base-ref"
+              placeholder="origin/master"
+              @input="onUnifiedBaseRefInput"
+            />
+            <button
+              type="button"
+              class="icon-btn"
+              title="串行刷新所有已勾选项目的远端分支候选"
+              :disabled="props.config.projects.length === 0"
+              @click="refreshAll"
+            >⟳ 全部</button>
+          </span>
+          <datalist id="unified-base-ref">
+            <option v-for="branch in unifiedCandidates" :key="branch" :value="branch" />
+          </datalist>
         </label>
-        <p class="hint">基分支为空时由后端按 origin/master 归一化；逐项目仍可单独修改。</p>
+        <p class="hint">{{ previewOf(unifiedBaseRef) }}</p>
       </div>
     </div>
 
@@ -167,7 +230,7 @@ function start(): void {
       <div class="page-head">
         <h2 style="margin: 0">项目</h2>
         <span class="spacer" />
-        <button type="button" class="btn" title="逐项目串行拉取远端分支候选" @click="emit('refreshAllBranches')">⟳ 全部</button>
+        <span class="hint">勾选项目后可用「⟳」逐个拉取远端候选</span>
       </div>
       <table class="select-table">
         <thead>
@@ -183,7 +246,7 @@ function start(): void {
         <tbody>
           <tr v-for="row in rows" :key="row.projectId">
             <td>
-              <input type="checkbox" :checked="row.selected" :aria-label="`选择 ${row.projectId}`" @change="toggleRow(row)" />
+              <input type="checkbox" :checked="row.selected" :aria-label="`选择 ${row.projectId}`" @change="onToggleRow(row)" />
             </td>
             <td>{{ row.projectId }}</td>
             <td>{{ row.projectType }}</td>
@@ -193,14 +256,33 @@ function start(): void {
             </td>
             <td>
               <span class="field-row">
-                <input v-model="row.baseRef" type="text" placeholder="origin/master" />
+                <input
+                  v-model="row.baseRef"
+                  type="text"
+                  :list="`base-ref-${row.projectId}`"
+                  placeholder="origin/master"
+                />
                 <button
                   type="button"
                   class="icon-btn"
                   title="拉取该项目的远端分支候选"
-                  @click="emit('refreshBranches', row.projectId)"
+                  :disabled="refreshing.includes(row.projectId)"
+                  @click="loadCandidates(row.projectId, true)"
                 >⟳</button>
+                <span
+                  v-if="warningOf(row.projectId)"
+                  class="hint"
+                  :title="warningOf(row.projectId) ?? ''"
+                >⚠</span>
               </span>
+              <datalist :id="`base-ref-${row.projectId}`">
+                <option
+                  v-for="branch in candidates.get(row.projectId)?.branches ?? []"
+                  :key="branch"
+                  :value="branch"
+                />
+              </datalist>
+              <span class="cell-sub">{{ previewOf(row.baseRef) }}</span>
             </td>
           </tr>
           <tr v-if="rows.length === 0">

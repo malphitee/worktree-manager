@@ -6,6 +6,11 @@ use serde::{Deserialize, Serialize};
 /// 两份持久化模型当前 schema 版本（docs/data-model.md 开头约定）
 pub const SCHEMA_VERSION: u32 = 1;
 
+/// 当前时间（RFC 3339 UTC、秒精度），所有持久化时间戳统一使用
+pub fn now_rfc3339() -> String {
+    chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
+}
+
 // ============================ 全局配置（config.json） ============================
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -24,7 +29,7 @@ pub struct ProjectConfig {
     pub vendor_available: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppConfig {
     pub schema_version: u32,
@@ -36,6 +41,19 @@ pub struct AppConfig {
     pub projects: Vec<ProjectConfig>,
     #[serde(default)]
     pub recent_iterations: Vec<String>,
+}
+
+impl Default for AppConfig {
+    /// 默认配置必须带当前 `schemaVersion`（配置文件不存在时直接返回该值，不创建文件）
+    fn default() -> Self {
+        Self {
+            schema_version: SCHEMA_VERSION,
+            workspace_root: None,
+            shared_directories: Vec::new(),
+            projects: Vec::new(),
+            recent_iterations: Vec::new(),
+        }
+    }
 }
 
 // ========================= 迭代清单（.worktree-manager.json） =========================
@@ -385,7 +403,7 @@ pub struct RemovalAssessment {
     pub risks: Vec<RemovalRisk>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MergeCellResult {
     pub status: MergeCellStatus,
@@ -396,7 +414,7 @@ pub struct MergeCellResult {
     pub dirty: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MergeRecordResult {
     pub project_id: String,

@@ -160,9 +160,8 @@ Rust（S6）：
 
 ## 7. 实现记录
 
-实现方填写：
-
-- 完成日期：
-- 偏离项：
-- 原因：
-- 涉及文件：
+- 完成日期：2026-09-30（S6）
+- 偏离项：锁名统一为「隐藏迭代」（设计 §3.2 写的是「隐藏迭代」/「恢复迭代」两个名字，取 `architecture.md §6.2` 的单一名字）；
+  前端隐藏 / 恢复成功后按 `workflows.md §9` 第 5、7 步就地更新 `hiddenAt`（不重新快扫）。
+- 原因：锁名以当前态文档为准；就地更新避免多余的全工作区扫描。
+- 涉及文件：`src-tauri/src/manifest.rs`、`src-tauri/src/lib.rs`、`src/App.vue`、`src/components/WorkspaceList.vue`

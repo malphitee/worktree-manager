@@ -175,9 +175,7 @@ async function runMergeCheck(iteration: string, filter?) {
 
 ## 7. 实现记录
 
-实现方填写：
-
-- 完成日期：
-- 偏离项：
-- 原因：
-- 涉及文件：
+- 完成日期：2026-09-30（S5）
+- 偏离项：无。订阅一次并在 `onBeforeUnmount` 释放；`record` 事件按 `worktreePath` 就地更新（`utils/merge.ts::applyRecord`，纯函数可测）；命令返回值整体替换。
+- 原因：—
+- 涉及文件：`src/components/WorkspaceList.vue`、`src/utils/merge.ts`、`src-tauri/src/merge_check.rs`、`src-tauri/src/lib.rs`

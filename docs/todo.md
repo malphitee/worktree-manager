@@ -30,7 +30,16 @@
 
 | 日期 | 发现 | 所属步骤 / 功能 | 处理 |
 | --- | --- | --- | --- |
-| | | | 记录不实现 |
+| 2026-09-30 | Tauri 2 codegen 在 macOS 上强制要求默认窗口图标：`bundle.icon` 缺失时 `generate_context!` 会 panic（`failed to open icon .../icons/icon.png`）。已新增 `src-tauri/icons/icon.png`（128×128 RGBA）并在 `tauri.conf.json` 的 `bundle.icon` 中引用 | S1 工程骨架 | 记录（已随 S1 修复） |
+| 2026-09-30 | `#[tauri::command]` 会对 `pub` 命令函数 `#[macro_export]` 生成同名宏，在 crate 根（lib.rs）会与自身冲突（E0255）；lib.rs 中的命令函数必须是模块私有 | S3 命令注册 | 记录（实现按此约束，命令仍在 lib.rs） |
+| 2026-09-30 | `git show-ref --verify --quiet` 成功时无 stdout：不能用输出判存在性，必须用退出码（新增 `git::run_exists`） | S3 创建流程 | 记录（已修复并加单测） |
+| 2026-09-30 | `docs` 中的 `assess_discovered_removal(sourcePath)` 单参数无法同时定位 worktree 与源仓库；实现改为 `(iteration, worktreePath, sourcePath)` | S3 移除流程 | 记录（已更新 `architecture.md §7` 与 `workflows.md §7.1`） |
+| 2026-09-30 | 「本地同名分支」拦截必须放在「去重」之后，否则工具自己创建的分支会挡住 `alreadyExists` 判定（与判定口径 1 / 验收 §2 冲突） | S3 创建流程 | 记录（已更新 `workflows.md §2` 子步骤顺序） |
+| 2026-09-30 | 「未受清单管理的同名目录」按验收 §2 应阻止该项目创建（而非目录名顺延）；因此占用集合只取清单记录 + 公共目录目标名 | S3/S4 创建流程 | 记录（已更新 `workflows.md §2` 第 6-7 步） |
+| 2026-09-30 | `AppConfig` 的派生 `Default` 会让 `schemaVersion` 为 0（配置文件缺失返回默认值时 schemaVersion=0，与 data-model 的 1 不符） | S3 配置读取 | 记录（已改为手写 `Default`） |
+| 2026-09-30 | 验收 §9 的 `grep -rn http dist/` 会命中 Vue 运行时的 XML 命名空间常量 `http://www.w3.org/1999/xlink` 与错误参考链接 `https://vuejs.org/error-reference/`（均为字符串常量，不是网络请求）；`ipc.localhost` 在构建产物中不出现（运行期由 `@tauri-apps/api` 拼装） | S9 验收 | 记录（已在 `acceptance.md` 对应条目中说明） |
+| 2026-09-30 | 单提交的 squash 合并与原始提交 patch-id 相同，会被层 2（`cherry`）判为 `merged`；层 3 `contained` 只在多提交压成一个时出现 | S5 合并检查 | 记录（`design/001` 实现记录已说明，测试 fixture 用两个提交） |
+| 2026-09-30 | `git fetch --no-tags origin develop master` 在远端缺某个目标分支时会整体失败 → 该仓库全部单元格 `stale = true`，`targetMissing` 与 `stale` 必然同时出现（文档未明确这一耦合） | S5 合并检查 | 记录（集成测试与 `design/008` 实现记录已说明） |
 
 ---
 

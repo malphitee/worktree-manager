@@ -1,4 +1,4 @@
-// 基分支归一化「预览」（设计 013；仅用于界面展示与前端预检，不做安全判定）。
+// 基分支归一化「预览」（设计 013 §3.3：`previewNormalized`）（设计 013；仅用于界面展示与前端预检，不做安全判定）。
 // 规则（requirements.md 判定口径 12）：空串＝origin/master；<remote>/<branch> 首段命中已配置 remote 则原样；
 // 裸分支名优先 origin，没有 origin 且只有一个 remote 时用该 remote；否则报错。
 // 后端 base_ref.rs 会重新归一化并校验，前端结果不可信。
@@ -10,7 +10,7 @@ export interface BaseRefPreview {
   error: string | null;
 }
 
-export function normalizePreview(input: string, remotes: string[]): BaseRefPreview {
+export function previewNormalized(input: string, remotes: string[]): BaseRefPreview {
   const raw = input.trim();
   if (raw.length === 0) {
     return { value: "origin/master", error: null };

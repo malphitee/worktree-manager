@@ -125,9 +125,13 @@ export function removeWorktree(request: RemoveRequest): Promise<null> {
   return isTauri() ? invokeCommand("remove_worktree", { request }) : unsupported();
 }
 
-export function assessDiscoveredRemoval(sourcePath: string): Promise<RemovalAssessment> {
+export function assessDiscoveredRemoval(
+  iteration: string,
+  worktreePath: string,
+  sourcePath: string,
+): Promise<RemovalAssessment> {
   return isTauri()
-    ? invokeCommand("assess_discovered_removal", { sourcePath })
+    ? invokeCommand("assess_discovered_removal", { iteration, worktreePath, sourcePath })
     : Promise.resolve(demo.demoDiscoveredRemovalAssessment);
 }
 

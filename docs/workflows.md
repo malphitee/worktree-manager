@@ -62,19 +62,21 @@
    8. 逐项目串行（判定口径 1、2、4），每项目：
       1. `emit(create-progress, phase=queued)`。
       2. `base_ref.rs::normalize`：`git remote` 列举 → 归一化（判定口径 12）；失败 → 记录 `createFailed`（保留归一化尝试结果与 `message`），`emit(failed)`，继续下一项目。
-      3. 分支模式：`validate_branch_name` + `git check-ref-format --branch <name>`；`git show-ref --verify --quiet refs/heads/<branch>` 退出码 0 → 本地已有同名分支 → `createFailed`，**不建目录**。
-      4. 去重（键＝`projectId` + `branch`，不含基分支）：清单已有 `active` 记录且目录存在 → `createResult.status = alreadyExists`，不再 fetch，`emit(completed)`，继续。
-      5. 目录名：`path_utils::next_directory_name(occupied, projectId)`，`occupied` ＝ 清单所有记录（含 `removed`/`createFailed`）的目录名 ∪ 公共目录目标名 ∪ 迭代目录现有子目录名。
-      6. 目标目录已存在且不由清单管理 → `createFailed`「目录已存在且不受清单管理」。
-      7. `emit(fetching, message="git fetch <remote> <branch>")` → `git fetch <remote> <branch>`（工作目录＝源仓库根）；失败 → `createFailed`（`message` 已脱敏截断）。
-      8. `git rev-parse --verify FETCH_HEAD^{commit}` → `baseCommit`（40 位 hex）。
-      9. `emit(creating, message="git worktree add …")`：
+      3. 分支模式：`validate_branch_name` + `git check-ref-format --branch <name>`；不通过 → `createFailed`。
+      4. 去重（键＝`projectId` + `branch`，不含基分支）：清单已有 `active` 记录且目录存在并出现在源仓库 `worktree list --porcelain` 中 → `createResult.status = alreadyExists`，不再 fetch，`emit(completed)`，继续。
+         （去重必须在「本地同名分支拦截」之前：工具自己创建的分支同样存在于源仓库，否则二次创建会误报「本地已存在同名分支」。）
+      5. 分支模式：`git show-ref --verify --quiet refs/heads/<branch>` 退出码 0（且未命中上一步的有效重复记录）→ 本地已有同名分支 → `createFailed`，**不建目录**。
+      6. 目录名：`path_utils::next_directory_name(occupied, projectId)`，`occupied` ＝ 清单所有记录（含 `removed`/`createFailed`）的目录名 ∪ 公共目录目标名。
+      7. 目标目录已存在且不由清单管理（含同名文件 / 符号链接）→ `createFailed`「目录已存在且不受清单管理」，**不顺延**（避免与用户手工创建的目录串台）。
+      8. `emit(fetching, message="git fetch <remote> <branch>")` → `git fetch <remote> <branch>`（工作目录＝源仓库根）；失败 → `createFailed`（`message` 已脱敏截断）。
+      9. `git rev-parse --verify FETCH_HEAD^{commit}` → `baseCommit`（40 位 hex）。
+      10. `emit(creating, message="git worktree add …")`：
          - detached：`git worktree add --detach <path> <commit>`
          - 分支：`git worktree add -b <branch> <path> <commit>`
          - 失败 → `createFailed`，若目录被部分创建不做清理（记录 `message`，由复核暴露）。
-      10. `emit(vendor)` → `vendor.rs::assess_vendor(worktree, sourceRepository)` 六条件 → 满足则 `copy_vendor`（同 `copy_snapshot` 的临时目录 + rename 机制），`vendor.copiedByTool = true`；不满足 → 对应 `VendorStatus` 跳过；复制失败 → `copyFailed` + `postSteps[vendor].status = failed`，worktree 保留。非 PHP → `notPhp`。
-      11. 记录写入清单 `projects[]` 末尾（`lifecycle: active`、`createResult.status: created`、`createdAt: now`、`baseRef` 归一化值）→ **写盘**（每项目一次原子写）。
-      12. `emit(completed | failed, message)`。
+      11. `emit(vendor)` → `vendor.rs::assess_vendor(worktree, sourceRepository)` 六条件 → 满足则 `copy_vendor`（同 `copy_snapshot` 的临时目录 + rename 机制），`vendor.copiedByTool = true`；不满足 → 对应 `VendorStatus` 跳过；复制失败 → `copyFailed` + `postSteps[vendor].status = failed`，worktree 保留。非 PHP → `notPhp`。
+      12. 记录写入清单 `projects[]` 末尾（`lifecycle: active`、`createResult.status: created`、`createdAt: now`、`baseRef` 归一化值）→ **写盘**（每项目一次原子写）。
+      13. `emit(completed | failed, message)`。
    9. 返回 `CreateBatchResult`。
 5. **事件**：`create-progress` 载荷见 `data-model.md §4`；`message` 必须含实际命令文本。
 6. **失败处理**：单项目失败不影响后续、不回滚已成功项目；公共目录失败整批终止；锁冲突不进入 `OperationView`。`OperationView` 每行显示阶段标签与 `message`，全部结束显示「返回列表」。
@@ -180,7 +182,7 @@
 
 ### 7.1 评估
 
-1. 托管行：`assessRemoval(iteration, projectId, worktreePath)` → `assess_removal`；discovered 行：`assessDiscoveredRemoval(sourcePath)` → `assess_discovered_removal`（`sourcePath` ＝ 该行 `sourceRepository`；为空串的 discovered 行不可移除）。**不持锁**。
+1. 托管行：`assessRemoval(iteration, projectId, worktreePath)` → `assess_removal`；discovered 行：`assessDiscoveredRemoval(iteration, worktreePath, sourcePath)` → `assess_discovered_removal`（`sourcePath` ＝ 该行 `sourceRepository`；为空串的 discovered 行不可移除。评估需要 `iteration` 生成确认文本、需要 `worktreePath` 做路径校验，Git 命令必须在源仓库执行，故三者缺一不可）。**不持锁**。
 2. `removal.rs::assess`：
    1. 托管：读清单，`damaged` → 风险 `manifestInvalid`（blocking）并返回；找记录，`lifecycle ≠ active` → `pathInvalid`。
    2. `canonicalize(worktreePath)` + `ensure_within(迭代目录)`；失败 → `pathInvalid`（blocking）。

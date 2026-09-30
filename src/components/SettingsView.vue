@@ -1,19 +1,19 @@
 <script setup lang="ts">
 // 设置页（ui-spec.md §7.3）：工作区根目录、公共目录规则表、项目表。
-// 注意：从列表移除项目只改配置，不动磁盘仓库。
-import { computed, ref, watch } from "vue";
+// 注意：从列表移除项目只改配置，不动磁盘仓库；目录选择走 dialog 插件 + resolve_projects。
+import { computed, inject, ref, watch } from "vue";
+import * as api from "../api/tauri";
 import type { AppConfig, ProjectConfig, SharedDirectoryRule } from "../types";
+import { UI_CONTEXT_KEY } from "../utils/context";
 import { cloneConfig, precheckSingleSegmentName } from "../utils/config";
 
 const props = defineProps<{ config: AppConfig }>();
 
 const emit = defineEmits<{
   save: [config: AppConfig];
-  /** 选择工作区根目录（S3 接入目录对话框） */
-  pickRoot: [];
-  /** 添加项目：目录多选 → resolve_projects（S3 接入） */
-  addProjects: [];
 }>();
+
+const ui = inject(UI_CONTEXT_KEY, null);
 
 const form = ref<AppConfig>(cloneConfig(props.config));
 
@@ -77,6 +77,46 @@ function save(): void {
   emit("save", cloneConfig(form.value));
 }
 
+/** 选择工作区根目录（系统目录对话框；浏览器演示模式返回空数组） */
+async function chooseRoot(): Promise<void> {
+  try {
+    const paths = await api.pickDirectories(false);
+    if (paths.length > 0) {
+      form.value.workspaceRoot = paths[0] ?? null;
+    }
+  } catch (err) {
+    ui?.toast(api.toAppError(err).message, "danger");
+  }
+}
+
+/** 目录多选 → resolve_projects：逐条显示解析结果或错误 */
+async function addProjects(): Promise<void> {
+  try {
+    const paths = await api.pickDirectories(true);
+    if (paths.length === 0) {
+      return;
+    }
+    const resolutions = await api.resolveProjects(paths);
+    for (const resolution of resolutions) {
+      if (resolution.repositoryPath && resolution.suggestedId) {
+        form.value.projects.push({
+          id: resolution.suggestedId,
+          repositoryPath: resolution.repositoryPath,
+          projectType: resolution.projectType,
+          vendorAvailable: resolution.vendorAvailable,
+        });
+      } else {
+        ui?.toast(
+          `${resolution.inputPath}：${resolution.error ?? "无法解析为 Git 仓库"}`,
+          "danger",
+        );
+      }
+    }
+  } catch (err) {
+    ui?.toast(api.toAppError(err).message, "danger");
+  }
+}
+
 function projectTypeLabel(type: ProjectConfig["projectType"]): string {
   switch (type) {
     case "php":
@@ -108,7 +148,7 @@ const projects = computed<ProjectConfig[]>(() => form.value.projects);
         <h2>工作区根目录<span class="required-mark">*</span></h2>
         <div class="field-row">
           <input v-model="form.workspaceRoot" class="mono wide" type="text" placeholder="如 /Users/me/Work/workspace" />
-          <button type="button" class="btn" @click="emit('pickRoot')">选择目录</button>
+          <button type="button" class="btn" @click="chooseRoot">选择目录</button>
         </div>
         <p class="hint">所有迭代目录创建在该目录下；允许目录尚不存在，首次创建时自动建立。</p>
       </div>
@@ -147,7 +187,7 @@ const projects = computed<ProjectConfig[]>(() => form.value.projects);
       <div class="page-head">
         <h2 style="margin: 0">项目</h2>
         <span class="spacer" />
-        <button type="button" class="btn" @click="emit('addProjects')">添加项目</button>
+        <button type="button" class="btn" @click="addProjects">添加项目</button>
       </div>
       <table class="project-config-table">
         <thead>

@@ -1,5 +1,5 @@
 // 合并检查结论 → 标签文案 / 色调映射（ui-spec.md §8）
-import type { MergeCellStatus } from "../types";
+import type { MergeCellStatus, MergeCheckProgress, MergeCheckResult } from "../types";
 import type { Tone } from "./status";
 
 export function mergeCellLabel(s: MergeCellStatus): string {
@@ -42,6 +42,35 @@ export function mergeCellTone(s: MergeCellStatus): Tone {
 
 /** 尚未执行合并检查时的单元格文案（无后端结论，前端不推导） */
 export const MERGE_NOT_CHECKED_LABEL = "未检查";
+
+/** 正在检查、尚未收到该行结论时的文案（设计 003 §9） */
+export const MERGE_CHECKING_LABEL = "检查中…";
+
+/** 把一条 `record` 事件应用到内存结果（设计 003 §3.4）：按 `worktreePath` 就地替换或追加 */
+export function applyRecord(
+  results: Map<string, MergeCheckResult>,
+  progress: MergeCheckProgress,
+): Map<string, MergeCheckResult> {
+  if (progress.phase !== "record" || !progress.record) {
+    return results;
+  }
+  const record = progress.record;
+  const current = results.get(progress.iteration) ?? {
+    iteration: progress.iteration,
+    checkedAt: "",
+    records: [],
+  };
+  const records = [...current.records];
+  const index = records.findIndex((item) => item.worktreePath === record.worktreePath);
+  if (index >= 0) {
+    records[index] = record;
+  } else {
+    records.push(record);
+  }
+  const next = new Map(results);
+  next.set(progress.iteration, { ...current, records });
+  return next;
+}
 
 /** 合并检查目标分支（固定两个，不可配置） */
 export const MERGE_TARGETS = ["develop", "master"] as const;

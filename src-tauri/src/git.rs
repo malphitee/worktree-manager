@@ -264,6 +264,23 @@ pub fn run_with_timeout(cmd: &GitCommand, timeout: Duration) -> Result<String, A
     }
 }
 
+/// 执行并返回（退出码, stdout）；**非零退出不视为错误**。
+/// 用于依赖退出码做判定的命令（`merge-base --is-ancestor` / `cherry` / `merge-tree`）。
+pub fn run_exit(cmd: &GitCommand) -> Result<(i32, String), AppError> {
+    let child = spawn(cmd)?;
+    let output = child
+        .wait_with_output()
+        .map_err(|error| AppError::Git(format!("执行 git 失败：{error}")))?;
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    Ok((output.status.code().unwrap_or(-1), stdout))
+}
+
+/// 「存在性判断」类命令（`--verify --quiet`）：**退出码 0 → true**
+/// 注意：`--quiet` 不输出内容，不能用 stdout 判断；与 `run_optional` 的区别在此。
+pub fn run_exists(cmd: &GitCommand) -> bool {
+    run(cmd).is_ok()
+}
+
 /// 「存在性判断」类命令（`--verify --quiet`）：非零退出视为「不存在」→ `Ok(None)`
 pub fn run_optional(cmd: &GitCommand) -> Result<Option<String>, AppError> {
     match run(cmd) {
@@ -634,6 +651,38 @@ mod tests {
 
         assert!(entries[3].prunable);
         assert!(entries[4].bare);
+    }
+
+    #[test]
+    fn parse_worktree_list_handles_large_output_without_truncation() {
+        // 验收 §9：porcelain 输出完整解析、不截断（50+ 条目）
+        let mut output = String::new();
+        for index in 0..60 {
+            output.push_str(&format!(
+                "worktree /ws/iter{index}\nHEAD {index:040}\nbranch refs/heads/feature/{index}\n\n"
+            ));
+        }
+        let entries = parse_worktree_list(&output);
+        assert_eq!(entries.len(), 60);
+        assert_eq!(entries[59].branch.as_deref(), Some("feature/59"));
+        assert!(entries.iter().all(|entry| entry.head.as_deref().unwrap().len() == 40));
+    }
+
+    #[test]
+    fn parse_status_handles_large_output_without_truncation() {
+        let mut output = String::new();
+        for index in 0..80 {
+            output.push_str(&format!(" M src/file{index}.php
+"));
+        }
+        for index in 0..30 {
+            output.push_str(&format!("?? notes/{index}.md
+"));
+        }
+        let summary = parse_status(&output);
+        assert_eq!(summary.tracked_changes.len(), 80);
+        assert_eq!(summary.untracked.len(), 30);
+        assert!(summary.is_dirty());
     }
 
     #[test]

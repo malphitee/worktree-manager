@@ -145,9 +145,7 @@ pub fn active_records<'m>(manifest: &'m Manifest) -> Vec<&'m ManifestProject>;
 
 ## 7. 实现记录
 
-实现方填写：
-
-- 完成日期：
-- 偏离项：
-- 原因：
-- 涉及文件：
+- 完成日期：2026-09-30（S5）
+- 偏离项：无。`check` 先按 `lifecycle == Active` 过滤再分组（`removed` / `createFailed` 不进 `records[]`）。
+- 原因：—
+- 涉及文件：`src-tauri/src/merge_check.rs`

@@ -162,9 +162,9 @@ onBeforeUnmount(() => {
 
 ## 7. 实现记录
 
-实现方填写：
-
-- 完成日期：
-- 偏离项：
-- 原因：
-- 涉及文件：
+- 完成日期：2026-09-30（S7）
+- 偏离项：无。按设计实现「标记 + 气泡」一体组件（`tabindex="0"`、`aria-describedby`、hover 与 focus 均触发、
+  `scroll`/`resize` 以 `capture: true` 监听并立即收起、卸载时移除监听、浅色样式、`z-index: 1000`）。
+  实现记录：S1 阶段曾把标记放在 `IterationCard` 内、气泡作为独立组件接收 `anchor`，S7 按设计改为一体组件（`NoteTooltip` 自带标记与气泡）。
+- 原因：—
+- 涉及文件：`src/components/NoteTooltip.vue`、`src/components/IterationCard.vue`、`src/styles.css`、`scripts/test-frontend.mjs`

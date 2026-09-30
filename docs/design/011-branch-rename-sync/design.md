@@ -187,9 +187,10 @@ Rust（S7，`tempfile` + 裸仓库 fixture）：
 
 ## 7. 实现记录
 
-实现方填写：
-
-- 完成日期：
-- 偏离项：
-- 原因：
-- 涉及文件：
+- 完成日期：2026-09-30（S7）
+- 偏离项：无功能偏离。实现说明：① 判定结果复用既有 `head_state::HeadState`（`Valid` / `Renamed { live }` / `HeadMismatch`），未另立 `HeadJudgement` 枚举，语义等价；
+  ② `show-ref --verify --quiet` 用退出码判定（`git::run_exists`），因为 `--quiet` 成功时无 stdout；
+  ③ 回写时机：`list_groups(reconcile=true)` 内处理完整迭代后一次性整份原子写（只改 `branch` 字段），失败时把「分支重命名回写失败：<原因>」写入该迭代的 `manifestMessage` 而投影仍按 live 名返回；
+  ④ 合并检查（S5 已按 live 名判定）与移除（按 HEAD 判定）均不写清单。
+- 原因：—
+- 涉及文件：`src-tauri/src/manifest.rs`、`src-tauri/src/head_state.rs`、`src-tauri/src/merge_check.rs`、`src-tauri/src/lib.rs`、`src/utils/status.ts`、`src/App.vue`、`src/components/IterationCard.vue`、`src-tauri/tests/mvp_flow.rs`、`scripts/test-frontend.mjs`

@@ -295,7 +295,7 @@ impl OperationState {
 | `check_merge_status` | `iteration: string, projectId?: string, worktreePath?: string` | `MergeCheckResult` | 是 |
 | `assess_removal` | `iteration, projectId, worktreePath` | `RemovalAssessment` | 否 |
 | `remove_worktree` | `request: RemoveRequest` | `null` | 是 |
-| `assess_discovered_removal` | `sourcePath: string` | `RemovalAssessment` | 否 |
+| `assess_discovered_removal` | `iteration: string, worktreePath: string, sourcePath: string` | `RemovalAssessment` | 否 |
 | `remove_discovered_worktree` | `iteration, projectId, worktreePath, sourcePath, confirmation, removeCopiedVendor` | `null` | 是 |
 | `assess_archive` | `iteration` | `ArchiveAssessment` | 是（内部 fetch） |
 | `archive_iteration` | `request: ArchiveRequest` | `ArchiveOutcome` | 是 |

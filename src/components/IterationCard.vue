@@ -1,11 +1,19 @@
 <script setup lang="ts">
 // 单个迭代卡片（ui-spec.md §4 / §7.1）：头部按钮组、清单健康度横条、公共目录状态、项目表格。
 // 组件只负责展示与 emit，不自行推导业务结论（architecture.md §4.3）。
-import { computed, ref } from "vue";
+// 002：`worktreePath` / `branch` 两格单击复制；006：合并检查结果优先覆盖行内「基准变动」。
+import { computed, inject, onBeforeUnmount, ref } from "vue";
 import type { MergeCheckResult, MergeRecordResult, WorkspaceGroup, WorkspaceProject } from "../types";
+import { copyText } from "../utils/clipboard";
 import { COLUMNS } from "../utils/columns";
+import { UI_CONTEXT_KEY } from "../utils/context";
 import type { MergeTarget } from "../utils/merge";
-import { MERGE_NOT_CHECKED_LABEL, mergeCellLabel, mergeCellTone } from "../utils/merge";
+import {
+  MERGE_CHECKING_LABEL,
+  MERGE_NOT_CHECKED_LABEL,
+  mergeCellLabel,
+  mergeCellTone,
+} from "../utils/merge";
 import { validateNote } from "../utils/note";
 import {
   CHANGES_LABELS,
@@ -30,6 +38,20 @@ const props = defineProps<{
   filterActive: boolean;
   /** 该迭代的合并检查结果（内存态，006 用于就地覆盖行） */
   mergeResult: MergeCheckResult | null;
+  /** 该迭代正在检查合并（003） */
+  checking: boolean;
+  /** fetching 阶段的一行命令提示（003 §9） */
+  progressLine: string | null;
+  /** 拖拽进行中：忽略复制点击（002 决策 6） */
+  dragging: boolean;
+  /** 正在评估归档（008）：按钮 loading */
+  archiving: boolean;
+  /** 正在拖拽的 worktree 路径（014，来自 WorkspaceList） */
+  dragSourcePath: string | null;
+  /** 本卡片是否为当前落点（014） */
+  dropArmed: boolean;
+  /** 落点锚点：`null` ＝ 追加到末尾；非空 ＝ 插到该行之前 */
+  dropBeforePath: string | null;
 }>();
 
 const emit = defineEmits<{
@@ -42,16 +64,23 @@ const emit = defineEmits<{
   openProject: [payload: { iteration: string; project: WorkspaceProject }];
   remove: [payload: { iteration: string; project: WorkspaceProject }];
   mergeDetail: [payload: { iteration: string; project: WorkspaceProject; target: MergeTarget }];
-  copyCell: [text: string];
+  dragStart: [payload: { iteration: string; worktreePath: string }];
+  dragEnd: [];
+  dragOver: [payload: { iteration: string; beforeWorktreePath: string | null }];
+  drop: [payload: { iteration: string; beforeWorktreePath: string | null }];
 }>();
+
+const ui = inject(UI_CONTEXT_KEY, null);
 
 const editingNote = ref(false);
 const noteDraft = ref("");
 const noteError = ref<string | null>(null);
-const noteMarker = ref<HTMLElement | null>(null);
-const noteHovering = ref(false);
+const copiedKey = ref<string | null>(null);
+let copyTimer: ReturnType<typeof setTimeout> | null = null;
 
 const manifestValid = computed(() => props.group.manifestHealth === "valid");
+/** 只有清单有效的迭代接受落点（ui-spec.md §7.5） */
+const dropAcceptable = computed(() => manifestValid.value);
 const canEditNote = computed(() => manifestValid.value);
 
 function show(key: string): boolean {
@@ -85,6 +114,91 @@ function saveNote(): void {
   editingNote.value = false;
   emit("saveNote", { iteration: props.group.iteration, note: result.value });
 }
+
+// ------------------------------ 拖拽排序 / 跨迭代移动（014） ------------------------------
+
+function onHandleDragStart(event: DragEvent, project: WorkspaceProject): void {
+  if (props.filterActive || event.dataTransfer === null) {
+    return;
+  }
+  event.dataTransfer.setData("text/plain", project.worktreePath);
+  event.dataTransfer.effectAllowed = "move";
+  emit("dragStart", { iteration: props.group.iteration, worktreePath: project.worktreePath });
+}
+
+/** 行内落点：上半部分 → 插到该行之前；下半部分 → 插到下一行之前（末尾为 null） */
+function rowAnchor(event: DragEvent, project: WorkspaceProject, index: number): string | null {
+  const element = event.currentTarget as HTMLElement | null;
+  if (!element) {
+    return null;
+  }
+  const rect = element.getBoundingClientRect();
+  if (event.clientY < rect.top + rect.height / 2) {
+    return project.worktreePath;
+  }
+  const next = props.group.projects[index + 1];
+  return next ? next.worktreePath : null;
+}
+
+function onRowDragOver(event: DragEvent, project: WorkspaceProject, index: number): void {
+  if (!dropAcceptable.value) {
+    return;
+  }
+  event.preventDefault();
+  emit("dragOver", {
+    iteration: props.group.iteration,
+    beforeWorktreePath: rowAnchor(event, project, index),
+  });
+}
+
+function onRowDrop(event: DragEvent, project: WorkspaceProject, index: number): void {
+  event.preventDefault();
+  emit("drop", {
+    iteration: props.group.iteration,
+    beforeWorktreePath: rowAnchor(event, project, index),
+  });
+}
+
+/** 表格空白区 / 表尾 → 追加到末尾 */
+function onTableDragOver(event: DragEvent): void {
+  if (!dropAcceptable.value) {
+    return;
+  }
+  event.preventDefault();
+  emit("dragOver", { iteration: props.group.iteration, beforeWorktreePath: null });
+}
+
+function onTableDrop(event: DragEvent): void {
+  event.preventDefault();
+  emit("drop", { iteration: props.group.iteration, beforeWorktreePath: null });
+}
+
+/** 021：整格复制；成功后该格显示「已复制」1.2 秒（重复点击重置计时） */
+async function onCopy(text: string, key: string): Promise<void> {
+  if (props.dragging || text.length === 0) {
+    return;
+  }
+  try {
+    await copyText(text);
+  } catch (error) {
+    ui?.toast(error instanceof Error ? error.message : "复制失败，请手动选择文本", "danger");
+    return;
+  }
+  copiedKey.value = key;
+  if (copyTimer !== null) {
+    clearTimeout(copyTimer);
+  }
+  copyTimer = setTimeout(() => {
+    copiedKey.value = null;
+    copyTimer = null;
+  }, 1200);
+}
+
+onBeforeUnmount(() => {
+  if (copyTimer !== null) {
+    clearTimeout(copyTimer);
+  }
+});
 
 function shortCommit(commit: string | null): string {
   return commit ? commit.slice(0, 7) : "";
@@ -135,7 +249,7 @@ interface MergeCellView {
   stale: boolean;
 }
 
-/** 合并单元格视图（无结论 → null，前端不推导） */
+/** 合并单元格视图（无结论 → null；检查中 → 单独的「检查中…」标签） */
 function mergeCellView(project: WorkspaceProject, target: MergeTarget): MergeCellView | null {
   const cell = cellOf(project, target);
   if (!cell) {
@@ -152,30 +266,34 @@ function mergeCellView(project: WorkspaceProject, target: MergeTarget): MergeCel
         {{ props.expanded ? "▾" : "▸" }}
       </button>
       <span class="iteration-title">{{ props.group.iteration }}</span>
-      <span
+      <NoteTooltip
         v-if="props.group.note"
-        ref="noteMarker"
-        class="note-marker"
-        aria-label="备注"
-        @mouseenter="noteHovering = true"
-        @mouseleave="noteHovering = false"
-      >▤</span>
+        :note="props.group.note"
+        :id="`note-tip-${props.group.iteration}`"
+      />
       <span class="iteration-path mono" :title="props.group.iterationPath">{{ props.group.iterationPath }}</span>
       <span class="spacer" />
       <div class="head-actions">
         <button type="button" class="btn" :disabled="!canEditNote" @click="startNoteEdit">✎ 备注</button>
         <button type="button" class="btn" :disabled="!manifestValid" @click="emit('hide', props.group.iteration)">隐藏</button>
-        <button type="button" class="btn" :disabled="!manifestValid" @click="emit('archive', props.group.iteration)">归档</button>
+        <button type="button" class="btn" :disabled="!manifestValid || props.archiving" @click="emit('archive', props.group.iteration)">
+          {{ props.archiving ? "评估中…" : "归档" }}
+        </button>
         <button type="button" class="btn" :disabled="!props.group.openable" @click="emit('openIteration', props.group.iteration)">
           打开目录
         </button>
-        <button type="button" class="btn" :disabled="!manifestValid" @click="emit('checkMerge', props.group.iteration)">
-          检查合并
+        <button
+          type="button"
+          class="btn"
+          :disabled="!manifestValid || props.checking"
+          @click="emit('checkMerge', props.group.iteration)"
+        >
+          {{ props.checking ? MERGE_CHECKING_LABEL : "检查合并" }}
         </button>
       </div>
     </header>
 
-    <NoteTooltip v-if="noteHovering && props.group.note" :text="props.group.note" :anchor="noteMarker" />
+    <div v-if="props.progressLine" class="progress-line">{{ props.progressLine }}</div>
 
     <div v-if="props.group.manifestHealth !== 'valid'" class="manifest-bar">
       <span>清单不可用（{{ props.group.manifestHealth }}）：{{ props.group.manifestMessage }}</span>
@@ -207,7 +325,7 @@ function mergeCellView(project: WorkspaceProject, target: MergeTarget): MergeCel
         >{{ rule.targetDirectory }} · {{ sharedDirLabel(rule.status) }}</span>
       </div>
 
-      <div class="table-scroll">
+      <div class="table-scroll" @dragover="onTableDragOver" @drop="onTableDrop">
         <table class="project-table">
           <thead>
             <tr>
@@ -218,13 +336,25 @@ function mergeCellView(project: WorkspaceProject, target: MergeTarget): MergeCel
           </thead>
           <tbody>
 
-            <tr v-for="project in props.group.projects" :key="`${project.projectId}-${project.worktreePath}`">
+            <tr
+              v-for="(project, index) in props.group.projects"
+              :key="`${project.projectId}-${project.worktreePath}`"
+              :class="{
+                'row-dragging': props.dragSourcePath === project.worktreePath,
+                'drop-indicator': props.dropArmed && props.dropBeforePath === project.worktreePath,
+              }"
+              @dragover="onRowDragOver($event, project, index)"
+              @drop="onRowDrop($event, project, index)"
+            >
               <td v-show="show('project')">
                 <span
                   v-if="project.lifecycle === 'active'"
                   class="drag-handle"
                   :class="{ disabled: props.filterActive }"
-                  title="拖拽排序"
+                  :draggable="!props.filterActive"
+                  title="拖拽排序 / 跨迭代移动"
+                  @dragstart="onHandleDragStart($event, project)"
+                  @dragend="emit('dragEnd')"
                 >⠿</span>
                 <span>{{ project.projectId }}</span>
                 <span v-if="project.renamedFrom" class="renamed-flag" :title="`原名 ${project.renamedFrom}`">
@@ -232,7 +362,13 @@ function mergeCellView(project: WorkspaceProject, target: MergeTarget): MergeCel
                 </span>
               </td>
               <td v-show="show('branch')">
-                <span class="cell-branch" :title="project.branchDisplay">{{ project.branchDisplay }}</span>
+                <span v-if="copiedKey === `${project.worktreePath}:branch`" class="tag success">已复制</span>
+                <span
+                  v-else
+                  class="cell-branch copyable"
+                  :title="project.branchDisplay"
+                  @click="onCopy(project.branchDisplay, `${project.worktreePath}:branch`)"
+                >{{ project.branchDisplay }}</span>
                 <span v-if="project.baseRef" class="cell-sub">基于 {{ project.baseRef }}</span>
               </td>
               <td v-show="show('dirty')">
@@ -250,6 +386,7 @@ function mergeCellView(project: WorkspaceProject, target: MergeTarget): MergeCel
                   >{{ mergeCellView(project, "develop")!.label }}</span>
                   <span v-if="mergeCellView(project, 'develop')!.stale" class="hint">{{ STALE_LABEL }}</span>
                 </span>
+                <span v-else-if="props.checking" class="tag neutral">{{ MERGE_CHECKING_LABEL }}</span>
                 <span v-else class="tag neutral">{{ MERGE_NOT_CHECKED_LABEL }}</span>
               </td>
               <td v-show="show('mergeMaster')">
@@ -261,6 +398,7 @@ function mergeCellView(project: WorkspaceProject, target: MergeTarget): MergeCel
                   >{{ mergeCellView(project, "master")!.label }}</span>
                   <span v-if="mergeCellView(project, 'master')!.stale" class="hint">{{ STALE_LABEL }}</span>
                 </span>
+                <span v-else-if="props.checking" class="tag neutral">{{ MERGE_CHECKING_LABEL }}</span>
                 <span v-else class="tag neutral">{{ MERGE_NOT_CHECKED_LABEL }}</span>
               </td>
               <td v-show="show('baseCommit')">
@@ -270,7 +408,13 @@ function mergeCellView(project: WorkspaceProject, target: MergeTarget): MergeCel
                 <span class="cell-ellipsis" :title="project.sourceRepository">{{ project.sourceRepository || "—" }}</span>
               </td>
               <td v-show="show('worktreePath')">
-                <span class="cell-ellipsis mono cell-copy" :title="project.worktreePath">{{ project.worktreePath }}</span>
+                <span v-if="copiedKey === `${project.worktreePath}:worktreePath`" class="tag success">已复制</span>
+                <span
+                  v-else
+                  class="cell-ellipsis mono copyable"
+                  :title="project.worktreePath"
+                  @click="onCopy(project.worktreePath, `${project.worktreePath}:worktreePath`)"
+                >{{ project.worktreePath }}</span>
               </td>
               <td v-show="show('vendor')">
                 <span v-if="project.vendorStatus" class="tag" :class="vendorTone(project.vendorStatus)">
@@ -303,6 +447,9 @@ function mergeCellView(project: WorkspaceProject, target: MergeTarget): MergeCel
             </tr>
             <tr v-if="props.group.projects.length === 0">
               <td :colspan="COLUMNS.length" class="empty-state">没有可显示的项目</td>
+            </tr>
+            <tr v-if="props.dropArmed && props.dropBeforePath === null && props.group.projects.length > 0" class="drop-indicator">
+              <td :colspan="COLUMNS.length" />
             </tr>
           </tbody>
         </table>

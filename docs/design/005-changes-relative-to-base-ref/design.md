@@ -158,9 +158,7 @@ worktree 目录不存在（`validity = missingDirectory`）时直接返回 `hasC
 
 ## 7. 实现记录
 
-实现方填写：
-
-- 完成日期：
-- 偏离项：
-- 原因：
-- 涉及文件：
+- 完成日期：2026-09-30（S5）
+- 偏离项：无。解析链与 `rev-list --count <base>..HEAD > 0` 实现于 `merge_check::has_changes`，合并检查与复核档共用；discovered 行退化为 `origin/master` → `master`。
+- 原因：—
+- 涉及文件：`src-tauri/src/merge_check.rs`、`src-tauri/src/manifest.rs`、`src-tauri/tests/mvp_flow.rs`

@@ -164,9 +164,7 @@ export function effectiveChangeState(
 
 ## 7. 实现记录
 
-实现方填写：
-
-- 完成日期：
-- 偏离项：
-- 原因：
-- 涉及文件：
+- 完成日期：2026-09-30（S5）
+- 偏离项：无。行内 `hasChanges` / `dirty` 优先取合并检查结论（`IterationCard` 的 `rowHasChanges` / `rowDirty`）。
+- 原因：—
+- 涉及文件：`src/components/IterationCard.vue`、`src/utils/merge.ts`

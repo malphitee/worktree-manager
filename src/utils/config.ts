@@ -60,7 +60,8 @@ export function precheckIteration(raw: string): string | null {
 export function precheckWorkspaceRoot(raw: string): string | null {
   const trimmed = raw.trim();
   if (trimmed.length === 0) {
-    return "请填写工作区根目录";
+    // 与后端 create_workspaces 的校验文案保持一致（验收 §1/§2）
+    return "请先在设置中填写工作区根目录";
   }
   if (!looksAbsolute(trimmed)) {
     return "必须是绝对路径";

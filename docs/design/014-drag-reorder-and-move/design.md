@@ -248,9 +248,9 @@ Rust 集成测试（`tempfile` + 裸仓库；无 git 则打印原因并 return�
 
 ## 7. 实现记录
 
-实现方填写：
-
-- 完成日期：
-- 偏离项：
-- 原因：
-- 涉及文件：
+- 完成日期：2026-09-30（S8）
+- 偏离项：无功能偏离。实现说明：① 落点锚点由 `IterationCard` 按鼠标相对行高的位置计算并 emit，
+  `WorkspaceList` 负责「原位不发请求」判断与同迭代 / 跨迭代分派；② 跨迭代移动后由 `WorkspaceList` 清除源与目标的合并结论并 emit `changed`，
+  父组件随即快扫；③ 预检第 2 项对「源迭代目录/清单缺失」统一映射为 `manifestDamaged`（设计 §3.2 第 1 步），目标迭代缺失为 `notFound`。
+- 原因：—
+- 涉及文件：`src-tauri/src/relocate.rs`、`src-tauri/src/lib.rs`、`src/components/IterationCard.vue`、`src/components/WorkspaceList.vue`、`src/App.vue`、`src/styles.css`、`src-tauri/tests/mvp_flow.rs`、`scripts/test-frontend.mjs`

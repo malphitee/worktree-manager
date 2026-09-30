@@ -2,15 +2,18 @@
 // 归档模态（008 / ui-spec.md §6）：干净 / 强制两态；危险确认类模态，Esc 不关闭。
 import { computed, onMounted, ref } from "vue";
 import type { ArchiveAssessment } from "../types";
+import { canArchive } from "../utils/archive";
 import { mergeCellLabel, mergeCellTone } from "../utils/merge";
 
 const props = defineProps<{
   iteration: string;
   assessment: ArchiveAssessment;
+  /** 归档执行阶段的进度文案（实际命令） */
+  progressLine: string | null;
 }>();
 
 const emit = defineEmits<{
-  confirm: [payload: { force: boolean }];
+  confirm: [payload: { force: boolean; confirmation: string }];
   cancel: [];
 }>();
 
@@ -21,8 +24,9 @@ const panel = ref<HTMLElement | null>(null);
 const canTeleport = typeof document !== "undefined";
 
 const dirtyRecords = computed(() => props.assessment.records.filter((record) => !record.clean));
-const textMatches = computed(() => confirmation.value === props.assessment.confirmationText);
-const canConfirm = computed(() => (props.assessment.clean ? true : force.value && textMatches.value));
+const canConfirm = computed(() =>
+  canArchive(props.assessment.clean, confirmation.value, props.assessment.confirmationText, force.value),
+);
 
 onMounted(() => {
   panel.value?.focus();
@@ -35,6 +39,7 @@ onMounted(() => {
       <div ref="panel" class="modal-panel" tabindex="-1">
         <div class="modal-head">归档迭代 · {{ props.iteration }}</div>
         <div class="modal-body">
+          <p v-if="props.progressLine" class="progress-line">{{ props.progressLine }}</p>
           <p v-if="props.assessment.clean" class="hint">
             全部记录均已合并进 develop / master 且工作区干净；归档会移除全部 worktree，保留本地分支、迭代目录与公共目录。
           </p>
@@ -69,7 +74,7 @@ onMounted(() => {
             type="button"
             class="btn danger"
             :disabled="!canConfirm"
-            @click="emit('confirm', { force: !props.assessment.clean && force })"
+            @click="emit('confirm', { force: !props.assessment.clean && force, confirmation })"
           >
             {{ props.assessment.clean ? "归档" : "强制归档" }}
           </button>
