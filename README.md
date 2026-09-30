@@ -57,6 +57,8 @@ npm run typecheck                    # vue-tsc --noEmit
 npm run test:frontend                # node scripts/test-frontend.mjs
 npm run build                        # vue-tsc --noEmit && vite build
 (cd src-tauri && cargo test)         # Rust 单测 + 集成测试
+node scripts/demo-sandbox.mjs        # 生成 ~/wm-demo 本地演示沙箱（3 个仓库 + 公共目录 + 工作区根目录）
+node scripts/demo-sandbox.mjs --write-config   # 同时把沙箱写入应用配置（会先备份现有 config.json）
 npm run tauri build -- --no-bundle   # 发布构建
 # 便携验证（macOS）
 dst="$(mktemp -d)/wm-portable-check"; mkdir -p "$dst"
@@ -148,6 +150,8 @@ cp src-tauri/target/release/worktree-manager "$dst/"
 | 便携验证 | 可执行文件复制到空临时目录后启动，进程持续运行、无标准错误输出 |
 
 **未验证项**
+
+> 人工点击验收可用本地演示沙箱：`node scripts/demo-sandbox.mjs --write-config`（生成 `~/wm-demo`，备份并替换 `config.json`；删除 `~/wm-demo` 与还原备份即可复位）。
 
 - 真实 Tauri 窗口的人工交互：窗口标题 / 尺寸 / 居中、目录选择对话框、系统文件管理器打开、剪贴板、**拖拽（含拖影与落点）**、备注气泡的滚动收起与翻转、内联编辑键盘操作、复核期间列表不闪空。相关验收条目已在 `docs/acceptance.md` 中标注原因（均需人工在窗口内执行）。
 - Windows / Linux 平台行为：本轮验收平台为 macOS；相关分支代码保留但未编译验证（`cargo check --target x86_64-pc-windows-msvc` 因本机未安装该 target 未执行）。
